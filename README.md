@@ -1,4 +1,4 @@
-# 我在校园自动签到工具 - 江西制造职业技术学院专用
+# 我在校园自动签到工具 - 江西制造职业技术学院个人用
 
 该项目基于 [NewWoZaiXiaoYuan](https://github.com/LinChiQ/NewWoZaiXiaoYuan) 进行了二次修改，适用于**江西制造职业技术学院**的自动签到和登录系统。
 
