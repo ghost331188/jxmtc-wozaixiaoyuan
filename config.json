@@ -1,0 +1,15 @@
+{
+    "school_name": "学校名称",
+    "username": "账号",
+    "password": "密码",
+    "location": {
+        "latitude": 28.6838,
+        "longitude": 115.858,
+        "country": "中国",
+        "province": "江西省",
+        "city": "南昌市",
+        "district": "南昌县",
+        "street": "紫阳大道318号"
+    },
+    "JWSESSION": ""
+}
