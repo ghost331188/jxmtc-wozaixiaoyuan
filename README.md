@@ -19,7 +19,7 @@
 
 ```json
 {
-    "school_name": "江西制造职业技术学院",
+    "school_name": "学校名称",
     "username": "账号",
     "password": "密码",
     "location": {
@@ -28,12 +28,11 @@
         "country": "中国",
         "province": "江西省",
         "city": "南昌市",
-        "district": "红谷滩区",
-        "street": "新府路152号"
+        "district": "南昌县",
+        "street": "紫阳大道318号"
     },
     "JWSESSION": ""
 }
-
 ```
 
 
