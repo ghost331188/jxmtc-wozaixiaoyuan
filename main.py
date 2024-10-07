@@ -17,18 +17,18 @@ def encrypt(t, e):
     return b64encode(encrypted_text).decode('utf-8')
 
 
-# 从 'configjson' 文件中加载配置
+# 从 'config.json' 文件中加载配置
 def load_config():
-    with open('configjson', 'r', encoding='utf-8') as file:
+    with open('config.json', 'r', encoding='utf-8') as file:
         config = json.load(file)
     return config
 
 
-# 将 JWSESSION 存储到 'configjson' 文件中
+# 将 JWSESSION 存储到 'config.json' 文件中
 def save_jwsession(user_index, jws):
     config = load_config()
     config['users'][user_index]['JWSESSION'] = jws  # 将 JWSESSION 存入配置文件
-    with open('configjson', 'w', encoding='utf-8') as file:
+    with open('config.json', 'w', encoding='utf-8') as file:
         json.dump(config, file, ensure_ascii=False, indent=4)  # 保存配置文件
 
 
@@ -87,27 +87,28 @@ def get_my_sign_logs(headers):
     data = json.loads(response.text).get('data', [])
     if len(data) == 0:
         print("未找到签到日志")
-        return None, None, None, False
+        return None, None, None, None, False
 
     sign_data = data[0]
     if int(sign_data['signStatus']) != 1:
-        print("用户已打过卡！")
-        return None, None, None, False
+        print(f"{sign_data.get('name', '用户')} 已打过卡！")
+        return None, None, None, None, False
 
-    if 'id' in sign_data and 'signId' in sign_data and 'schoolId' in sign_data:
+    if 'id' in sign_data and 'signId' in sign_data and 'schoolId' in sign_data and 'name' in sign_data:
         id_value = sign_data['id']
         sign_id_value = sign_data['signId']
         school_id = sign_data['schoolId']
-        print(f"签到记录 id: {id_value}, signId: {sign_id_value}, schoolId: {school_id}")
-        return id_value, sign_id_value, school_id, True
+        user_name = sign_data['name']
+        print(f"签到记录 id: {id_value}, signId: {sign_id_value}, schoolId: {school_id}, 用户: {user_name}")
+        return id_value, sign_id_value, school_id, user_name, True
 
     print("签到记录中没有 'id' 或 'signId' 字段。")
-    return None, None, None, False
+    return None, None, None, None, False
 
 
 # 签到函数
-def sign_in(headers, id_value, sign_id_value, school_id, location_info):
-    print("开始签到")
+def sign_in(headers, id_value, sign_id_value, school_id, location_info, user_name):
+    print(f"开始签到用户: {user_name}")
     url = 'https://gw.wozaixiaoyuan.com/sign/mobile/receive/doSignByLocation'
     params = {
         'id': id_value,
@@ -134,11 +135,11 @@ def sign_in(headers, id_value, sign_id_value, school_id, location_info):
     if response.status_code == 200:
         result = json.loads(response.text)
         if result['code'] == 0:
-            print("签到成功！")
+            print(f"签到成功！用户: {user_name}")
         else:
-            print(f"签到失败，错误信息: {result.get('message', '未知错误')}")
+            print(f"签到失败，错误信息: {result.get('message', '未知错误')}，用户: {user_name}")
     else:
-        print(f"请求失败，HTTP状态码: {response.status_code}")
+        print(f"请求失败，HTTP状态码: {response.status_code}，用户: {user_name}")
 
 
 def main():
@@ -194,11 +195,11 @@ def main():
         headers['Cookie'] = f'JWSESSION={jws}'
 
         # 获取签到日志
-        id_value, sign_id_value, school_id, can_sign_in = get_my_sign_logs(headers)
+        id_value, sign_id_value, school_id, user_name, can_sign_in = get_my_sign_logs(headers)
 
         # 如果可以签到，执行签到
         if can_sign_in:
-            sign_in(headers, id_value, sign_id_value, school_id, location_info)
+            sign_in(headers, id_value, sign_id_value, school_id, location_info, user_name)
         else:
             print(f"无法进行签到，已打卡或无相关信息: {username}")
 
@@ -208,6 +209,5 @@ def main():
 
 
 # 调用主函数
-main()
-
-
+if __name__ == '__main__':
+    main()
