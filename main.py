@@ -17,14 +17,14 @@ def encrypt(t, e):
     return b64encode(encrypted_text).decode('utf-8')
 
 
-# 从 'wozai.json' 文件中加载配置
+# 从 'config.json' 文件中加载配置
 def load_config():
-    with open('wozai.json', 'r', encoding='utf-8') as file:
+    with open('config.json', 'r', encoding='utf-8') as file:
         config = json.load(file)
     return config
 
 
-# 将 JWSESSION 存储到 'wozai.json' 文件中
+# 将 JWSESSION 存储到 'config.json' 文件中
 def save_jwsession(jws):
     config = load_config()
     config['JWSESSION'] = jws  # 将 JWSESSION 存入配置文件
