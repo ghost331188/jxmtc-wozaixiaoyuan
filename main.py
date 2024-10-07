@@ -17,18 +17,18 @@ def encrypt(t, e):
     return b64encode(encrypted_text).decode('utf-8')
 
 
-# 从 'config.json' 文件中加载配置
+# 从 'configjson' 文件中加载配置
 def load_config():
-    with open('config.json', 'r', encoding='utf-8') as file:
+    with open('configjson', 'r', encoding='utf-8') as file:
         config = json.load(file)
     return config
 
 
-# 将 JWSESSION 存储到 'config.json' 文件中
-def save_jwsession(jws):
+# 将 JWSESSION 存储到 'configjson' 文件中
+def save_jwsession(user_index, jws):
     config = load_config()
-    config['JWSESSION'] = jws  # 将 JWSESSION 存入配置文件
-    with open('config.json', 'w', encoding='utf-8') as file:
+    config['users'][user_index]['JWSESSION'] = jws  # 将 JWSESSION 存入配置文件
+    with open('configjson', 'w', encoding='utf-8') as file:
         json.dump(config, file, ensure_ascii=False, indent=4)  # 保存配置文件
 
 
@@ -141,60 +141,73 @@ def sign_in(headers, id_value, sign_id_value, school_id, location_info):
         print(f"请求失败，HTTP状态码: {response.status_code}")
 
 
-# 主函数：登录并进行签到
 def main():
     # 从配置文件读取信息
     config = load_config()
-    school_name = config['school_name']
-    username = config['username']
-    password = config['password']
-    location_info = config['location']
+    users = config['users']
 
-    # 初始化 headers
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-        "Connection": "keep-alive",
-        "Content-Type": "application/json;charset=UTF-8",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0",
-        "sec-ch-ua": '"Microsoft Edge";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"'
-    }
+    for user in users:
+        school_name = user.get('school_name', '').strip()
+        username = user.get('username', '').strip()
+        password = user.get('password', '').strip()
+        location_info = user.get('location', {})
 
-    # 检查是否已经存储JWSESSION
-    jws = config.get('JWSESSION', None)
-    if jws:
-        print("使用存储的JWSESSION进行签到")
-    else:
-        # 获取学校ID
-        school_id = get_school_id(school_name)
-        if not school_id:
-            print("无法获取学校ID，结束程序")
-            return
+        # 跳过未提供学校名、账号或密码的用户
+        if not school_name or not username or not password:
+            print(f"跳过用户，信息不完整: 学校: {school_name}, 用户名: {username}")
+            continue
 
-        # 登录并获取 JWSESSION
-        jws = login(headers, username, password, school_id)
-        if not jws:
-            print("登录失败，结束程序")
-            return
+        # 初始化 headers
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+            "Connection": "keep-alive",
+            "Content-Type": "application/json;charset=UTF-8",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0",
+            "sec-ch-ua": '"Microsoft Edge";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"'
+        }
 
-        # 保存JWSESSION到配置文件中
-        save_jwsession(jws)
+        # 检查是否已经存储JWSESSION
+        jws = user.get('JWSESSION', None)
+        if jws:
+            print(f"使用存储的JWSESSION进行签到: {username}")
+        else:
+            # 获取学校ID
+            school_id = get_school_id(school_name)
+            if not school_id:
+                print(f"无法获取学校ID，跳过用户: {username}")
+                continue
 
-    # 设置登录后的Cookie
-    headers['Cookie'] = f'JWSESSION={jws}'
+            # 登录并获取 JWSESSION
+            jws = login(headers, username, password, school_id)
+            if not jws:
+                print(f"登录失败，跳过用户: {username}")
+                continue
 
-    # 获取签到日志
-    id_value, sign_id_value, school_id, can_sign_in = get_my_sign_logs(headers)
+            # 保存JWSESSION到配置文件中
+            user['JWSESSION'] = jws  # 更新当前用户的 JWSESSION
 
-    # 如果可以签到，执行签到
-    if can_sign_in:
-        sign_in(headers, id_value, sign_id_value, school_id, location_info)
-    else:
-        print("无法进行签到，已打卡或无相关信息。")
+        # 设置登录后的Cookie
+        headers['Cookie'] = f'JWSESSION={jws}'
+
+        # 获取签到日志
+        id_value, sign_id_value, school_id, can_sign_in = get_my_sign_logs(headers)
+
+        # 如果可以签到，执行签到
+        if can_sign_in:
+            sign_in(headers, id_value, sign_id_value, school_id, location_info)
+        else:
+            print(f"无法进行签到，已打卡或无相关信息: {username}")
+
+    # 更新配置文件中的JWSESSION
+    with open('config.json', 'w', encoding='utf-8') as file:
+        json.dump(config, file, ensure_ascii=False, indent=4)
 
 
 # 调用主函数
 main()
+
+
