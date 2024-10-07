@@ -1,13 +1,15 @@
 # 我在校园自动签到工具之江西制造职业技术学院
 
-该项目基于 [NewWoZaiXiaoYuan](https://github.com/LinChiQ/NewWoZaiXiaoYuan) 进行了二次修改，适用于**江西制造职业技术学院**的自动签到和登录系统。
-并未适配其他功能
+该项目基于 [NewWoZaiXiaoYuan](https://github.com/LinChiQ/NewWoZaiXiaoYuan) 进行了二次修改，适用于**江西制造职业技术学院**的自动签到和登录系统,并未适配其他功能
+
+
 
 ## 功能说明
 
 - 自动登录并签到我在校园平台
 - 支持定制的地理位置信息（经纬度等）
 - 支持将 JWSESSION 存入本地文件，以便下次自动登录
+- 支持多用户签到
 
 ## 环境要求
 
@@ -20,19 +22,38 @@
 
 ```json
 {
-    "school_name": "学校名称",
-    "username": "账号",
-    "password": "密码",
-    "location": {
-        "latitude": 28.6838,
-        "longitude": 115.858,
-        "country": "中国",
-        "province": "江西省",
-        "city": "南昌市",
-        "district": "南昌县",
-        "street": "紫阳大道318号"
-    },
-    "JWSESSION": ""
+    "users": [
+        {
+            "school_name": "学校名称",
+            "username": "账号",
+            "password": "密码",
+            "location": {
+                "latitude": 28.6838,
+                "longitude": 115.858,
+                "country": "中国",
+                "province": "江西省",
+                "city": "南昌市",
+                "district": "南昌县",
+                "street": "紫阳大道318号"
+            },
+            "JWSESSION": ""
+        },
+        {
+            "school_name": "不用签到则留空",
+            "username": "不用签到则留空",
+            "password": "不用签到则留空",
+            "location": {
+                "latitude": 28.6838,
+                "longitude": 115.858,
+                "country": "中国",
+                "province": "江西省",
+                "city": "南昌市",
+                "district": "红谷滩区",
+                "street": "新府路152号"
+            },
+            "JWSESSION": ""
+        }
+    ]
 }
 ```
 
