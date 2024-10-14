@@ -24,32 +24,34 @@
 {
     "users": [
         {
+            "name": "张三",
             "school_name": "学校名称",
             "username": "账号",
             "password": "密码",
             "location": {
-                "latitude": 28.6838,
-                "longitude": 115.858,
+                "latitude": "28.682892",
+                "longitude": "115.858197",
                 "country": "中国",
-                "province": "江西省",
-                "city": "南昌市",
-                "district": "南昌县",
+                "province": "江西",
+                "city": "南昌",
+                "district": "青山湖区",
                 "street": "紫阳大道318号"
             },
             "JWSESSION": ""
         },
         {
-            "school_name": "不用签到则留空",
-            "username": "不用签到则留空",
-            "password": "不用签到则留空",
+            "name": "",
+            "school_name": "",
+            "username": "",
+            "password": "",
             "location": {
-                "latitude": 28.6838,
-                "longitude": 115.858,
+                "latitude": "28.682892",
+                "longitude": "115.858197",
                 "country": "中国",
-                "province": "江西省",
-                "city": "南昌市",
-                "district": "红谷滩区",
-                "street": "新府路152号"
+                "province": "江西",
+                "city": "南昌",
+                "district": "青山湖区",
+                "street": "紫阳大道318号"
             },
             "JWSESSION": ""
         }
@@ -61,7 +63,7 @@
 
 ### 配置项说明
 
-- **school_name**: 学校名称，默认为 `江西制造职业技术学院`。
+- **school_name**: 学校名称。
 
 - **username**: 我在校园的登录账号。
 
