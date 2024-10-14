@@ -4,10 +4,7 @@ import re
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from base64 import b64encode
-import os
 
-
-# AES加密函数
 def encrypt(t, e):
     t = str(t)
     key = e.encode('utf-8')
@@ -16,32 +13,25 @@ def encrypt(t, e):
     encrypted_text = cipher.encrypt(padded_text)
     return b64encode(encrypted_text).decode('utf-8')
 
-
-# 从 'config.json' 文件中加载配置
 def load_config():
     with open('config.json', 'r', encoding='utf-8') as file:
-        config = json.load(file)
-    return config
+        return json.load(file)
 
-
-# 将 JWSESSION 存储到 'config.json' 文件中
-def save_jwsession(user_index, jws):
+def save_jwsession(user, jws):
     config = load_config()
-    config['users'][user_index]['JWSESSION'] = jws  # 将 JWSESSION 存入配置文件
+    for u in config['users']:
+        if u['username'] == user['username']:
+            u['JWSESSION'] = jws
+            break
     with open('config.json', 'w', encoding='utf-8') as file:
-        json.dump(config, file, ensure_ascii=False, indent=4)  # 保存配置文件
+        json.dump(config, file, ensure_ascii=False, indent=4)
 
-
-# 获取学校ID
 def get_school_id(school_name):
     print(f"获取学校ID: {school_name}")
-    headers = {
-        "accept": "application/json, text/plain, */*",
-        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 Edg/119.0.0.0"
-    }
+    headers = {"accept": "application/json, text/plain, */*", "user-agent": "Mozilla/5.0"}
     url = "https://gw.wozaixiaoyuan.com/basicinfo/mobile/login/getSchoolList"
     response = requests.get(url, headers=headers)
-    data = json.loads(response.text)['data']
+    data = response.json().get('data', [])
     for school in data:
         if school['name'] == school_name:
             print(f"找到学校ID: {school['id']}")
@@ -49,165 +39,99 @@ def get_school_id(school_name):
     print("未找到学校ID")
     return None
 
-
-# 登录函数，返回JWSESSION
-def login(headers, username, password, school_id):
-    print(f"登录用户: {username}")
-    key = (str(username) + "0000000000000000")[:16]  # 生成16位密钥
-    encrypted_text = encrypt(password, key)
+def login(user, school_id):
+    print(f"登录用户: {user['username']}")
+    key = (str(user['username']) + "0000000000000000")[:16]
+    encrypted_text = encrypt(user['password'], key)
     login_url = 'https://gw.wozaixiaoyuan.com/basicinfo/mobile/login/username'
-    params = {
-        "schoolId": school_id,
-        "username": username,
-        "password": encrypted_text
-    }
-    login_req = requests.post(login_url, params=params, headers=headers)
-    text = json.loads(login_req.text)
-    if text['code'] == 0:
-        print(f"{username}账号登录成功！")
-        set_cookie = login_req.headers['Set-Cookie']
-        jws = re.search(r'JWSESSION=(.*?);', str(set_cookie)).group(1)
+    params = {"schoolId": school_id, "username": user['username'], "password": encrypted_text}
+    response = requests.post(login_url, params=params)
+    result = response.json()
+
+    if result['code'] == 0:
+        print(f"{user['name']} 登录成功！")
+        jws = re.search(r'JWSESSION=(.*?);', response.headers['Set-Cookie']).group(1)
         return jws
     else:
-        print(f"{username}登录失败，请检查账号密码！")
-        return False
+        print(f"{user['name']} 登录失败，请检查账号密码！")
+        return None
 
-
-# 获取打卡日志
 def get_my_sign_logs(headers):
     print("获取签到日志")
     url = 'https://gw.wozaixiaoyuan.com/sign/mobile/receive/getMySignLogs'
-    params = {
-        'page': 1,
-        'size': 1
-    }
+    params = {'page': 1, 'size': 1}
     response = requests.get(url, headers=headers, params=params)
-    print(f"签到日志响应: {response.text}")
+    data = response.json().get('data', [])
 
-    data = json.loads(response.text).get('data', [])
-    if len(data) == 0:
+    if not data:
         print("未找到签到日志")
-        return None, None, None, None, False
+        return None, None, None
 
-    sign_data = data[0]
-    if int(sign_data['signStatus']) != 1:
-        print(f"{sign_data.get('name', '用户')} 已打过卡！")
-        return None, None, None, None, False
+    log = data[0]
+    name = log.get('name', '未知')
+    sign_status = log.get('signStatus')
 
-    if 'id' in sign_data and 'signId' in sign_data and 'schoolId' in sign_data and 'name' in sign_data:
-        id_value = sign_data['id']
-        sign_id_value = sign_data['signId']
-        school_id = sign_data['schoolId']
-        user_name = sign_data['name']
-        print(f"签到记录 id: {id_value}, signId: {sign_id_value}, schoolId: {school_id}, 用户: {user_name}")
-        return id_value, sign_id_value, school_id, user_name, True
+    status_message = {1: "签到中", 2: "签到时间已过"}.get(sign_status, "未知状态")
+    print(f"用户 {name} 的签到状态: {status_message}")
 
-    print("签到记录中没有 'id' 或 'signId' 字段。")
-    return None, None, None, None, False
+    return log['id'], log['signId'], log['schoolId']
 
-
-# 签到函数
-def sign_in(headers, id_value, sign_id_value, school_id, location_info, user_name):
-    print(f"开始签到用户: {user_name}")
+def sign_in(headers, id_value, sign_id_value, school_id, location_info):
+    print("开始签到")
     url = 'https://gw.wozaixiaoyuan.com/sign/mobile/receive/doSignByLocation'
-    params = {
-        'id': id_value,
-        'schoolId': school_id,
-        'signId': sign_id_value
-    }
-
-    payload = {
-        "id": id_value,
-        "schoolId": school_id,
-        "signId": sign_id_value,
-        "latitude": location_info['latitude'],  # 从配置中读取经纬度
-        "longitude": location_info['longitude'],
-        "country": location_info['country'],
-        "province": location_info['province'],
-        "city": location_info['city'],
-        "district": location_info['district'],
-        "street": location_info['street']
-    }
-
+    params = {'id': id_value, 'schoolId': school_id, 'signId': sign_id_value}
+    payload = {"id": id_value, "schoolId": school_id, "signId": sign_id_value, **location_info}
     response = requests.post(url, headers=headers, params=params, json=payload)
-    print(f"签到响应: {response.text}")
+    result = response.json()
 
-    if response.status_code == 200:
-        result = json.loads(response.text)
-        if result['code'] == 0:
-            print(f"签到成功！用户: {user_name}")
-        else:
-            print(f"签到失败，错误信息: {result.get('message', '未知错误')}，用户: {user_name}")
+    if response.status_code == 200 and result['code'] == 0:
+        print("签到成功！")
     else:
-        print(f"请求失败，HTTP状态码: {response.status_code}，用户: {user_name}")
+        print(f"签到失败: {result.get('message', '未知错误')}")
 
+def try_sign_in_with_jws(user, headers):
+    id_value, sign_id_value, school_id = get_my_sign_logs(headers)
+    if id_value and sign_id_value and school_id:
+        sign_in(headers, id_value, sign_id_value, school_id, user['location'])
+        return True
+    print(f"用户 {user['name']} 无法签到，尝试重新登录")
+    return False
 
 def main():
-    # 从配置文件读取信息
     config = load_config()
-    users = config['users']
+    headers_template = {
+        "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/json;charset=UTF-8",
+        "User-Agent": "Mozilla/5.0"
+    }
 
-    for user in users:
-        school_name = user.get('school_name', '').strip()
-        username = user.get('username', '').strip()
-        password = user.get('password', '').strip()
-        location_info = user.get('location', {})
-
-        # 跳过未提供学校名、账号或密码的用户
-        if not school_name or not username or not password:
-            print(f"跳过用户，信息不完整: 学校: {school_name}, 用户名: {username}")
+    for user in config['users']:
+        print("-----------")
+        if not user['username'] or not user['password']:
+            print(f"跳过用户 {user['name']}：未填写账号或密码")
             continue
 
-        # 初始化 headers
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-            "Connection": "keep-alive",
-            "Content-Type": "application/json;charset=UTF-8",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0",
-            "sec-ch-ua": '"Microsoft Edge";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"'
-        }
+        headers = headers_template.copy()
+        jws = user.get('JWSESSION')
 
-        # 检查是否已经存储JWSESSION
-        jws = user.get('JWSESSION', None)
         if jws:
-            print(f"使用存储的JWSESSION进行签到: {username}")
-        else:
-            # 获取学校ID
-            school_id = get_school_id(school_name)
-            if not school_id:
-                print(f"无法获取学校ID，跳过用户: {username}")
-                continue
+            headers['Cookie'] = f'JWSESSION={jws}'
+            if try_sign_in_with_jws(user, headers):
+                continue  # 如果签到成功，跳过后续流程
 
-            # 登录并获取 JWSESSION
-            jws = login(headers, username, password, school_id)
-            if not jws:
-                print(f"登录失败，跳过用户: {username}")
-                continue
+        # 获取学校ID并登录
+        school_id = get_school_id(user['school_name'])
+        if not school_id:
+            print(f"用户 {user['name']} 获取学校ID失败，跳过")
+            continue
 
-            # 保存JWSESSION到配置文件中
-            user['JWSESSION'] = jws  # 更新当前用户的 JWSESSION
+        jws = login(user, school_id)
+        if not jws:
+            print(f"用户 {user['name']} 登录失败，跳过")
+            continue
 
-        # 设置登录后的Cookie
+        save_jwsession(user, jws)
         headers['Cookie'] = f'JWSESSION={jws}'
+        try_sign_in_with_jws(user, headers)
 
-        # 获取签到日志
-        id_value, sign_id_value, school_id, user_name, can_sign_in = get_my_sign_logs(headers)
-
-        # 如果可以签到，执行签到
-        if can_sign_in:
-            sign_in(headers, id_value, sign_id_value, school_id, location_info, user_name)
-        else:
-            print(f"无法进行签到，已打卡或无相关信息: {username}")
-
-    # 更新配置文件中的JWSESSION
-    with open('config.json', 'w', encoding='utf-8') as file:
-        json.dump(config, file, ensure_ascii=False, indent=4)
-
-
-# 调用主函数
-if __name__ == '__main__':
-    main()
+main()
