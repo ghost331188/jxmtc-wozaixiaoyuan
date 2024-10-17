@@ -1,170 +1,98 @@
-from flask import Flask, render_template_string, request, redirect, url_for, flash
-import requests
-import json
-import re
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad
-from base64 import b64encode
-import os
+from flask import Flask, Response, stream_with_context
+from apscheduler.schedulers.background import BackgroundScheduler
+import subprocess
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # 随机生成 24 字节的密钥
 
-def encrypt(t, e):
-    t = str(t)
-    key = e.encode('utf-8')
-    cipher = AES.new(key, AES.MODE_ECB)
-    padded_text = pad(t.encode('utf-8'), AES.block_size)
-    encrypted_text = cipher.encrypt(padded_text)
-    return b64encode(encrypted_text).decode('utf-8')
-
-def load_config():
-    with open('config.json', 'r', encoding='utf-8') as file:
-        return json.load(file)
-
-def save_jwsession(user, jws):
-    config = load_config()
-    for u in config['users']:
-        if u['username'] == user['username']:
-            u['JWSESSION'] = jws
-            break
-    with open('config.json', 'w', encoding='utf-8') as file:
-        json.dump(config, file, ensure_ascii=False, indent=4)
-
-def login(user, school_id):
-    key = (str(user['username']) + "0000000000000000")[:16]
-    encrypted_text = encrypt(user['password'], key)
-    login_url = 'https://gw.wozaixiaoyuan.com/basicinfo/mobile/login/username'
-    params = {"schoolId": school_id, "username": user['username'], "password": encrypted_text}
-    response = requests.post(login_url, params=params)
-    result = response.json()
-
-    if result['code'] == 0:
-        jws = re.search(r'JWSESSION=(.*?);', response.headers['Set-Cookie']).group(1)
-        return jws
-    return None
-
-def get_my_sign_logs(headers):
-    print("获取签到日志")
-    url = 'https://gw.wozaixiaoyuan.com/sign/mobile/receive/getMySignLogs'
-    params = {'page': 1, 'size': 1}
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=3)
-        data = response.json().get('data', [])
-
-        if not data:
-            print("未找到签到日志")
-            return None
-
-        log = data[0]
-        sign_status = log.get('signStatus', 0)
-        sign_mode = log.get('signMode', 0)
-        sign_time = log.get('signTime', '无记录')
-        name = log.get('name', '未知用户')
-
-        if sign_status != 1:
-            print(f"{name} 的签到时间已过，不再继续处理")
-            return None
-
-        if sign_mode == 2:
-            print(f"{name} 已签到，无需再次签到")
-            return f"{name} - 已签到 于 {sign_time}"
-
-        print(f"{name} 未签到，准备签到")
-        return f"{name} - 未签到 于 {sign_time}"
-
-    except requests.exceptions.Timeout:
-        print("获取签到日志超时")
-        return "获取签到日志超时，请稍后重试"
-    except Exception as e:
-        print(f"获取签到日志时出错: {e}")
-        return f"获取签到日志时出错: {e}"
+def execute_task():
+    """自动执行 wozai.py 并打印日志"""
+    print(f"自动任务在 {datetime.utcnow() + timedelta(hours=8)} 执行")
+    subprocess.run(['python3', 'wozai.py'])
 
 @app.route('/')
 def index():
-    config = load_config()
-    return render_template_string(TEMPLATE, users=config['users'])
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>我在校园签到系统</title>
+        <style>
+            body { font-family: Arial, sans-serif; background-color: #f9f9f9; margin: 0; padding: 20px; }
+            h1 { text-align: center; color: #4CAF50; }
+            .button { padding: 12px 24px; margin: 10px; background-color: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 8px; font-size: 16px; }
+            .button:hover { background-color: #45a049; }
+            .container { text-align: center; margin-top: 50px; }
+            pre { background-color: #e8e8e8; padding: 10px; border-radius: 5px; text-align: left; max-height: 300px; overflow-y: auto; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>当前北京时间: <span id="time"></span></h1>
+            <button class="button" onclick="startExecution()">手动执行签到</button>
+            <pre id="output">等待执行...</pre>
+        </div>
 
-@app.route('/sign/<username>')
-def sign_user(username):
-    config = load_config()
-    user = next((u for u in config['users'] if u['username'] == username), None)
+        <script>
+            function updateTime() {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                document.getElementById('time').textContent = formattedTime;
+            }
 
-    if not user:
-        flash(f"未找到用户: {username}")
-        return redirect(url_for('index'))
+            setInterval(updateTime, 1000);  // 每秒更新一次时间
 
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json;charset=UTF-8",
-        "User-Agent": "Mozilla/5.0"
-    }
-    jws = user.get('JWSESSION')
-    if jws:
-        headers['Cookie'] = f'JWSESSION={jws}'
+            function startExecution() {
+                const output = document.getElementById('output');
+                output.textContent = '执行中...\\n';
 
-    log_message = get_my_sign_logs(headers)
+                const eventSource = new EventSource('/execute');
+                eventSource.onmessage = function(event) {
+                    output.textContent += event.data + '\\n';
+                    output.scrollTop = output.scrollHeight;  // 滚动到底部
+                };
+                eventSource.onerror = function() {
+                    output.textContent += '执行完成。\\n';
+                    eventSource.close();
+                };
+            }
 
-    if log_message:
-        flash(log_message)
-    else:
-        flash(f"未能获取 {user['name']} 的签到日志")
+            // 初始化页面时立即更新一次时间
+            updateTime();
+        </script>
+    </body>
+    </html>
+    """
+    return html_content
 
-    return redirect(url_for('index'))
+@app.route('/execute')
+def execute():
+    """手动执行 wozai.py 并实时捕获输出"""
+    def generate():
+        process = subprocess.Popen(
+            ['python3', '-u', 'wozai.py'],  # -u 禁用缓冲输出
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        for line in iter(process.stdout.readline, ''):
+            yield f"data: {line.strip()}\n\n"  # SSE 格式发送输出
+        process.stdout.close()
+        process.wait()
 
-TEMPLATE = """
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我在校园签到系统</title>
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #f9f9f9; margin: 0; padding: 20px; }
-        h1 { text-align: center; color: #4CAF50; }
-        table { width: 80%; margin: 20px auto; border-collapse: collapse; }
-        th, td { padding: 12px; text-align: center; border-bottom: 1px solid #ddd; }
-        th { background-color: #4CAF50; color: white; }
-        tr:hover { background-color: #f1f1f1; }
-        .button { padding: 8px 16px; margin: 5px; background-color: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 5px; }
-        .button:hover { background-color: #45a049; }
-        .container { text-align: center; }
-        .logs { margin-top: 20px; }
-    </style>
-</head>
-<body>
-    <h1>我在校园签到系统</h1>
-    <table>
-        <tr>
-            <th>用户名</th>
-            <th>姓名</th>
-            <th>签到</th>
-            <th>签到日志</th>
-        </tr>
-        {% for user in users %}
-        <tr>
-            <td>{{ user.username }}</td>
-            <td>{{ user.name }}</td>
-            <td><button class="button" onclick="location.href='/sign/{{ user.username }}'">签到</button></td>
-            <td><button class="button" onclick="location.href='/sign/{{ user.username }}'">查看日志</button></td>
-        </tr>
-        {% endfor %}
-    </table>
-
-    <div class="logs">
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <ul>
-                    {% for message in messages %}
-                        <li style="text-align: left; margin-bottom: 10px;">{{ message }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
-        {% endwith %}
-    </div>
-</body>
-</html>
-"""
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(execute_task, 'cron', hour=18, minute=32)  # 每天 18:32 自动执行任务
+    scheduler.start()
+
+    app.run(host='0.0.0.0', port=8080)
